@@ -2,12 +2,13 @@ import { AbsoluteFill, Audio, Img, Sequence, interpolate, random, spring, static
 import { MapPin, MessageCircle, ShoppingBag } from 'lucide-react';
 import { money, products } from '../src/data';
 import { imageSizes } from './imageSizes';
+import voiceover from './voiceover.json';
 import { useLayout } from './AodPromo';
 import { colors, phone, sans, serif } from './theme';
 
 // Montage publicitaire d'une minute. 120 BPM : un temps = 15 images, une mesure = 60 images.
 // Chaque coupe tombe sur un temps de scripts/generate-soundtrack.cjs (montage-60s).
-export const MONTAGE = 1800;
+export const MONTAGE = 1860; // 62 s : l'écran final laisse le temps de dire le numéro
 
 const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const;
 const ease = (frame: number, from: number, to: number, out: [number, number] = [0, 1]) =>
@@ -308,12 +309,12 @@ const HeroQuote = () => {
 
 const Finale = () => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, durationInFrames } = useVideoConfig();
   const { unit } = useLayout();
   const pop = spring({ frame: frame - 40, fps, config: { damping: 11, stiffness: 150 } });
   const pulse = 1 + 0.025 * Math.sin(Math.max(0, frame - 60) / 6);
-  const fadeOut = interpolate(frame, [210, 240], [1, 0], clamp);
-  const leak = interpolate(frame, [0, 240], [120, -20]);
+  const fadeOut = interpolate(frame, [durationInFrames - 30, durationInFrames], [1, 0], clamp);
+  const leak = interpolate(frame, [0, durationInFrames], [120, -20]);
   return (
     <AbsoluteFill style={{ background: colors.navy, justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: 80 * unit }}>
       <AbsoluteFill style={{ background: `radial-gradient(circle at ${leak}% 30%, ${colors.gold}30, transparent 45%)` }} />
@@ -359,6 +360,56 @@ const LogoBug = () => {
   );
 };
 
+// ---------------------------------------------------------------- Voix off et sous-titres
+
+type Cue = { file: string; start: number; dur: number; text: string; sub: boolean };
+const cues = voiceover as Cue[];
+
+// Présence de la voix image par image (0 à 1, rampes douces) : sert à baisser la musique sous la voix.
+const voiceLevel = (() => {
+  const level = new Float32Array(2400);
+  for (const c of cues) {
+    for (let f = c.start - 8; f < c.start + c.dur + 12; f++) {
+      if (f < 0 || f >= level.length) continue;
+      const v = Math.min(1, (f - (c.start - 8)) / 8, (c.start + c.dur + 12 - f) / 12);
+      level[f] = Math.max(level[f], v);
+    }
+  }
+  return level;
+})();
+
+// Sous-titre façon « karaoké » : le mot en cours de prononciation passe en or.
+const Subtitle: React.FC<{ cue: Cue }> = ({ cue }) => {
+  const frame = useCurrentFrame();
+  const { vertical, unit } = useLayout();
+  const words = cue.text.split(' ');
+  const total = cue.text.replace(/ /g, '').length;
+  let acc = 0;
+  const spans = words.map((w) => { const s = acc / total; acc += w.length; return { w, s, e: acc / total }; });
+  const t = frame / cue.dur;
+  const appear = ease(frame, 0, 5), leave = interpolate(frame, [cue.dur + 2, cue.dur + 8], [1, 0], clamp);
+  return (
+    <AbsoluteFill style={{ justifyContent: 'flex-end', alignItems: 'center', paddingBottom: (cue.start >= FINALE ? (vertical ? 330 : 120) : vertical ? 580 : 330) * unit, pointerEvents: 'none' }}>
+      <div style={{ opacity: Math.min(appear, leave), transform: `translateY(${(1 - appear) * 12}px)`, maxWidth: (vertical ? 940 : 1500) * unit, textAlign: 'center', background: 'rgba(8,22,36,.72)', padding: `${14 * unit}px ${28 * unit}px`, borderRadius: 14 * unit, fontFamily: sans, fontWeight: 600, fontSize: 46 * unit, lineHeight: 1.3, color: colors.cream }}>
+        {spans.map(({ w, s, e }, i) => (
+          <span key={i} style={{ color: t >= s && t < e + 0.05 ? colors.gold : colors.cream }}>{i > 0 ? ' ' : ''}{w}</span>
+        ))}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+const VoiceOver = () => (
+  <>
+    {cues.map((c) => (
+      <Sequence key={c.file} from={c.start} durationInFrames={c.dur + 10}>
+        <Audio src={staticFile(c.file)} volume={1} />
+        {c.sub && <Subtitle cue={c} />}
+      </Sequence>
+    ))}
+  </>
+);
+
 // ---------------------------------------------------------------- Montage
 
 type Clip = { dur: number; el: React.ReactNode; whoosh?: boolean };
@@ -387,11 +438,11 @@ const timeline: Clip[] = [
   { dur: 180, el: <Mosaic />, whoosh: true },
   ...steps.map((s) => ({ dur: 90, el: <Step {...s} />, whoosh: true })),
   { dur: 90, el: <HeroQuote /> },
-  { dur: 240, el: <Finale /> },
+  { dur: 300, el: <Finale /> },
 ];
 
 const starts = timeline.reduce<number[]>((acc, c, i) => [...acc, i ? acc[i - 1] + timeline[i - 1].dur : 0], []);
-if (starts[starts.length - 1] + timeline[timeline.length - 1].dur !== MONTAGE) throw new Error('La timeline ne dure pas 60 s');
+if (starts[starts.length - 1] + timeline[timeline.length - 1].dur !== MONTAGE) throw new Error('La timeline ne correspond pas à MONTAGE');
 
 const FINALE = starts[starts.length - 1];
 const DROP = 1200; // mesure 20 : fin de la pause musicale, début des étapes
@@ -400,7 +451,7 @@ const Sound = () => {
   const { durationInFrames } = useVideoConfig();
   return (
     <>
-      <Audio src={staticFile('audio/montage-60s.mp3')} volume={(f) => 0.85 * interpolate(f, [0, 8, durationInFrames - 40, durationInFrames], [0, 1, 1, 0], clamp)} />
+      <Audio src={staticFile('audio/montage-60s.mp3')} volume={(f) => 0.85 * (1 - 0.62 * (voiceLevel[f] ?? 0)) * interpolate(f, [0, 8, durationInFrames - 40, durationInFrames], [0, 1, 1, 0], clamp)} />
       {[120, DROP].map((t) => (
         <Sequence key={`r${t}`} from={t - 60} durationInFrames={60}><Audio src={staticFile('audio/riser.mp3')} volume={0.28} /></Sequence>
       ))}
@@ -423,6 +474,7 @@ export const AodMontage = () => (
     <Sequence from={120} durationInFrames={FINALE - 120}><LogoBug /></Sequence>
     <Vignette />
     <Grain />
+    <VoiceOver />
     <Sound />
   </AbsoluteFill>
 );

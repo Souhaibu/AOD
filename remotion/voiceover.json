@@ -1,0 +1,212 @@
+[
+ {
+  "file": "audio/voix/01.mp3",
+  "start": 20,
+  "dur": 34,
+  "text": "Bienvenue chez AOD,",
+  "sub": false
+ },
+ {
+  "file": "audio/voix/02.mp3",
+  "start": 60,
+  "dur": 31,
+  "text": "Ventes et Services.",
+  "sub": false
+ },
+ {
+  "file": "audio/voix/03.mp3",
+  "start": 128,
+  "dur": 51,
+  "text": "À Madina, au cœur de Conakry,",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/04.mp3",
+  "start": 185,
+  "dur": 45,
+  "text": "une boutique pensée pour vous.",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/05.mp3",
+  "start": 246,
+  "dur": 28,
+  "text": "Pour vous, mesdames :",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/06.mp3",
+  "start": 282,
+  "dur": 34,
+  "text": "la robe Lumière,",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/07.mp3",
+  "start": 362,
+  "dur": 33,
+  "text": "l’ensemble Libre,",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/08.mp3",
+  "start": 401,
+  "dur": 33,
+  "text": "des pièces élégantes.",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/09.mp3",
+  "start": 456,
+  "dur": 24,
+  "text": "Pour vous, messieurs :",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/10.mp3",
+  "start": 490,
+  "dur": 50,
+  "text": "la chemise Essentielle.",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/11.mp3",
+  "start": 546,
+  "dur": 76,
+  "text": "Une coupe nette, au bureau comme le week-end.",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/12.mp3",
+  "start": 636,
+  "dur": 53,
+  "text": "Et parce que le détail change tout :",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/13.mp3",
+  "start": 695,
+  "dur": 47,
+  "text": "sacs, lunettes, accessoires…",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/14.mp3",
+  "start": 748,
+  "dur": 45,
+  "text": "de quoi compléter votre style.",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/15.mp3",
+  "start": 846,
+  "dur": 28,
+  "text": "Côté chaussures,",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/16.mp3",
+  "start": 880,
+  "dur": 40,
+  "text": "des sandales aux sneakers,",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/17.mp3",
+  "start": 926,
+  "dur": 47,
+  "text": "trouvez la paire qui vous ressemble.",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/18.mp3",
+  "start": 1122,
+  "dur": 24,
+  "text": "Une sélection.",
+  "sub": false
+ },
+ {
+  "file": "audio/voix/19.mp3",
+  "start": 1152,
+  "dur": 34,
+  "text": "Mille façons d’être vous.",
+  "sub": false
+ },
+ {
+  "file": "audio/voix/20.mp3",
+  "start": 1204,
+  "dur": 35,
+  "text": "Commander, c’est simple :",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/21.mp3",
+  "start": 1245,
+  "dur": 43,
+  "text": "on échange sur WhatsApp.",
+  "sub": false
+ },
+ {
+  "file": "audio/voix/22.mp3",
+  "start": 1294,
+  "dur": 41,
+  "text": "Vous choisissez à votre rythme,",
+  "sub": false
+ },
+ {
+  "file": "audio/voix/23.mp3",
+  "start": 1384,
+  "dur": 44,
+  "text": "et vous récupérez à Madina,",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/24.mp3",
+  "start": 1434,
+  "dur": 25,
+  "text": "ou on vous livre.",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/25.mp3",
+  "start": 1478,
+  "dur": 16,
+  "text": "AOD.",
+  "sub": false
+ },
+ {
+  "file": "audio/voix/26.mp3",
+  "start": 1500,
+  "dur": 51,
+  "text": "D’ici. Avec caractère.",
+  "sub": false
+ },
+ {
+  "file": "audio/voix/27.mp3",
+  "start": 1572,
+  "dur": 39,
+  "text": "Une envie ? Parlons-en !",
+  "sub": false
+ },
+ {
+  "file": "audio/voix/28.mp3",
+  "start": 1617,
+  "dur": 40,
+  "text": "Écrivez-nous sur WhatsApp,",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/29.mp3",
+  "start": 1663,
+  "dur": 118,
+  "text": "au 611 25 25 88.",
+  "sub": true
+ },
+ {
+  "file": "audio/voix/30.mp3",
+  "start": 1787,
+  "dur": 38,
+  "text": "On vous attend à Madina !",
+  "sub": true
+ }
+]

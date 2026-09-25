@@ -83,6 +83,8 @@ Une publicité de 30 s est découpée en deux séquences de 15 s, publiables ens
 
 `AodMontage60…` est un montage d’une minute calé sur la musique (120 BPM) : ouverture sur le logo, triptyque, chapitres Femme / Homme / Sacs & accessoires / Chaussures, enchaînement rapide, écran partagé, mosaïque, trois étapes de commande, citation et écran final WhatsApp. Grain, vignette et logo incrustés.
 
+Voix off et sous-titres : `scripts/generate-voiceover.py` synthétise le texte phrase par phrase (Piper, voix française « siwis ») dans `remotion/public/audio/voix/` et écrit `remotion/voiceover.json` (début, durée et sous-titre de chaque phrase, calés sur les scènes). La musique baisse automatiquement sous la voix et les sous-titres surlignent le mot prononcé. Pour utiliser une vraie voix, remplacer les fichiers `voix/01.mp3`… par des enregistrements du même texte puis relancer le script avec `MEASURE_ONLY=1`.
+
 Qualité : `remotion.config.ts` règle un encodage adapté aux téléphones (images intermédiaires JPEG 100, H.264 CRF 15, BT.709, AAC 320 kb/s). La vidéo utilise son propre dossier `remotion/public/` : visuels agrandis 2× par `scripts/upscale-video-images.py` et bande-son. Une photo n’est jamais agrandie au-delà de sa définition : si elle ne peut pas remplir l’écran nettement, elle est présentée encadrée sur un fond flou. Pour un résultat encore plus net, remplacer ces visuels par des photos ou vidéos originales en haute définition.
 
 ```sh

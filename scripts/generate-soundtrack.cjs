@@ -80,9 +80,9 @@ const theme = makeMusic({ duration: 14, bars: 6, airyBars: 1, chords: [Am, F, C,
 const pub1 = makeMusic({ duration: 15, bars: 7, airyBars: 1, chords: [Am, F, C, G] });
 const pub2 = makeMusic({ duration: 15, bars: 7, airyBars: 0, chords: [C, G, Am, F], melodyShift: 8, extraKalimba: true });
 
-// Montage 60 s (30 mesures) : intro aérée, groove, pause, relance, accord final.
+// Montage d'une minute (28 mesures + accord final) : intro aérée, groove, pause, relance, accord final.
 function makeMontage() {
-  const duration = 60, music = buffer(duration);
+  const duration = 62, music = buffer(duration); // 60 s + 2 s d'écran final pour la voix off
   const sectionOf = (bar) => (bar < 2 ? 'airy' : bar < 17 ? 'groove' : bar < 20 ? 'breakdown' : 'drop');
   for (let bar = 0; bar < 28; bar++) {
     const t0 = bar * 4 * BEAT, section = sectionOf(bar);
