@@ -67,3 +67,18 @@ La création de commande recalcule les prix depuis la base, vérifie les options
 - `supabase/` : schéma et fonctions serveur à valider sur le projet AOD.
 
 Références techniques consultées : https://supabase.com/docs/reference/javascript/initializing et https://supabase.com/docs/guides/database/postgres/row-level-security.
+
+## Vidéos promotionnelles (Remotion)
+
+Le dossier `remotion/` contient une vidéo promotionnelle animée aux couleurs AOD (bleu nuit, or, crème), générée à partir des produits mis en avant dans `src/data.ts` :
+
+- `AodPromoVertical` (1080×1920) : statut WhatsApp, Reels, TikTok ;
+- `AodPromoLandscape` (1920×1080) : écran en boutique, YouTube, site.
+
+```sh
+npm run video:studio     # éditeur visuel (aperçu, choix des produits via les props)
+npm run video:render     # rend les deux formats dans out/
+npm run video:typecheck
+```
+
+Les polices sont embarquées (@fontsource), le rendu fonctionne donc hors ligne. Les visuels restent illustratifs, comme sur le site.
