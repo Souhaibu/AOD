@@ -1,4 +1,4 @@
-import { AbsoluteFill, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Audio, Img, Sequence, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { TransitionSeries, linearTiming } from '@remotion/transitions';
 import { fade } from '@remotion/transitions/fade';
 import { slide } from '@remotion/transitions/slide';
@@ -100,10 +100,29 @@ const Outro = () => {
   );
 };
 
+// Bande-son originale générée par scripts/generate-soundtrack.cjs (120 BPM, une mesure = 60 images).
+const Soundtrack: React.FC<{ count: number }> = ({ count }) => {
+  const { fps, durationInFrames } = useVideoConfig();
+  // Début de chaque transition : après l'intro, puis toutes les PRODUCT - TRANSITION images.
+  const cuts = Array.from({ length: count + 1 }, (_, i) => INTRO - TRANSITION + i * (PRODUCT - TRANSITION));
+  const outroStart = cuts[cuts.length - 1];
+  return (
+    <>
+      <Audio src={staticFile('audio/aod-theme.mp3')} volume={(f) => 0.8 * interpolate(f, [0, 10, durationInFrames - 30, durationInFrames], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })} />
+      {cuts.map((cut) => (
+        <Sequence key={cut} from={cut - 4} durationInFrames={Math.round(0.6 * fps)}><Audio src={staticFile('audio/whoosh.mp3')} volume={0.35} /></Sequence>
+      ))}
+      {/* Carillon à l'apparition du bouton WhatsApp. */}
+      <Sequence from={outroStart + 20}><Audio src={staticFile('audio/chime.mp3')} volume={0.5} /></Sequence>
+    </>
+  );
+};
+
 export const AodPromo: React.FC<z.infer<typeof promoSchema>> = ({ productIds }) => {
   const timing = linearTiming({ durationInFrames: TRANSITION });
   return (
     <AbsoluteFill style={{ background: colors.navyDeep }}>
+      <Soundtrack count={productIds.length} />
       <TransitionSeries>
         <TransitionSeries.Sequence durationInFrames={INTRO}><Intro /></TransitionSeries.Sequence>
         {productIds.flatMap((id, i) => [

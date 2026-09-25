@@ -79,6 +79,7 @@ Le dossier `remotion/` contient une vidéo promotionnelle animée aux couleurs A
 npm run video:studio     # éditeur visuel (aperçu, choix des produits via les props)
 npm run video:render     # rend les deux formats dans out/
 npm run video:typecheck
+npm run video:audio      # régénère la bande-son dans public/audio/
 ```
 
-Les polices sont embarquées (@fontsource), le rendu fonctionne donc hors ligne. Les visuels restent illustratifs, comme sur le site.
+La bande-son (musique 120 BPM en la mineur pentatonique, kalimba, percussions, souffles sur les transitions, carillon sur l’appel WhatsApp) est une création originale synthétisée par `scripts/generate-soundtrack.cjs` : aucun droit musical à gérer. Les polices sont embarquées (@fontsource), le rendu fonctionne donc hors ligne. Les visuels restent illustratifs, comme sur le site.
