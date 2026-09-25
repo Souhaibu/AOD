@@ -16,21 +16,21 @@ const TRANSITION = 15;
 export const promoDuration = (count: number) => INTRO + count * PRODUCT + OUTRO - (count + 1) * TRANSITION;
 
 // Les chemins du catalogue commencent par « / » ; Remotion sert le dossier public/ via staticFile().
-const asset = (src: string) => (src.startsWith('http') ? src : staticFile(src.replace(/^\//, '')));
+export const asset = (src: string) => (src.startsWith('http') ? src : staticFile(src.replace(/^\//, '')));
 
-const useLayout = () => {
+export const useLayout = () => {
   const { width, height } = useVideoConfig();
   return { vertical: height > width, unit: Math.min(width, height) / 1080 };
 };
 
-const Rise: React.FC<{ delay?: number; children: React.ReactNode; style?: React.CSSProperties }> = ({ delay = 0, children, style }) => {
+export const Rise: React.FC<{ delay?: number; children: React.ReactNode; style?: React.CSSProperties }> = ({ delay = 0, children, style }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const p = spring({ frame: frame - delay, fps, config: { damping: 200 } });
   return <div style={{ opacity: p, transform: `translateY(${(1 - p) * 40}px)`, ...style }}>{children}</div>;
 };
 
-const GoldRule: React.FC<{ delay?: number; width: number }> = ({ delay = 0, width }) => {
+export const GoldRule: React.FC<{ delay?: number; width: number }> = ({ delay = 0, width }) => {
   const frame = useCurrentFrame();
   const w = interpolate(frame - delay, [0, 20], [0, width], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
   return <div style={{ height: 2, width: w, background: colors.gold }} />;
@@ -56,7 +56,7 @@ const Intro = () => {
   );
 };
 
-const ProductCard: React.FC<{ id: string; index: number; total: number }> = ({ id, index, total }) => {
+export const ProductCard: React.FC<{ id: string; index: number; total: number }> = ({ id, index, total }) => {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
   const { vertical, unit } = useLayout();
@@ -82,7 +82,7 @@ const ProductCard: React.FC<{ id: string; index: number; total: number }> = ({ i
   );
 };
 
-const Outro = () => {
+export const Outro = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const { unit } = useLayout();

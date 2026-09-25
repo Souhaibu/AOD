@@ -45,35 +45,40 @@ const pad = (buf, t, notes, len, g = 0.05) => add(buf, t, len, 0, (x) => {
   return g * env * notes.reduce((s, m) => s + Math.sin(2 * Math.PI * hz(m) * x) + Math.sin(2 * Math.PI * hz(m) * 1.004 * x + 1), 0);
 });
 
-// ---- Musique : 14 s, la mineur pentatonique, grille Am – F – C – G (une mesure = 2 s).
-const DURATION = 14;
-const music = buffer(DURATION);
-const chords = [
-  { bass: 45, pad: [57, 60, 64] }, // Am
-  { bass: 41, pad: [53, 57, 60] }, // F
-  { bass: 48, pad: [55, 60, 64] }, // C
-  { bass: 43, pad: [55, 59, 62] }, // G
-];
+// ---- Musique : la mineur pentatonique, une mesure = 2 s.
+const Am = { bass: 45, pad: [57, 60, 64] }, F = { bass: 41, pad: [53, 57, 60] }, C = { bass: 48, pad: [55, 60, 64] }, G = { bass: 43, pad: [55, 59, 62] };
 const melody = [69, 72, 76, 74, 72, 69, 67, 69, 72, 74, 76, 79, 76, 74, 72, 74];
-const bars = 6; // 0–12 s, puis accord final
-for (let bar = 0; bar < bars; bar++) {
-  const t0 = bar * 4 * BEAT;
-  const c = chords[bar % 4];
-  pad(music, t0, c.pad, 4 * BEAT + 0.3);
-  // Kalimba sur des croches syncopées, dès la première mesure.
-  [0, 3, 6, 8, 11, 14].forEach((s, k) => kalimba(music, t0 + s * STEP, melody[(bar * 6 + k) % melody.length], 0.2, k % 2 ? 0.4 : -0.4));
-  if (bar === 0) continue; // intro aérée : les percussions arrivent avec le premier produit
-  [0, 6, 8, 11].forEach((s) => kick(music, t0 + s * STEP));
-  [4, 12].forEach((s) => rim(music, t0 + s * STEP));
-  for (let s = 0; s < 16; s++) shaker(music, t0 + s * STEP, s % 2 ? 0.16 : 0.07);
-  [[0, 3], [3, 2], [6, 2], [10, 3], [14, 2]].forEach(([s, l], k) => bass(music, t0 + s * STEP, c.bass + (k === 3 ? 12 : 0), l * STEP));
+
+// airyBars : mesures d'ouverture sans percussions ; bars : mesures avant l'accord final.
+function makeMusic({ duration, bars, airyBars, chords, melodyShift = 0, extraKalimba = false }) {
+  const music = buffer(duration);
+  for (let bar = 0; bar < bars; bar++) {
+    const t0 = bar * 4 * BEAT;
+    const c = chords[bar % chords.length];
+    pad(music, t0, c.pad, 4 * BEAT + 0.3);
+    // Kalimba sur des croches syncopées, dès la première mesure.
+    [0, 3, 6, 8, 11, 14].forEach((s, k) => kalimba(music, t0 + s * STEP, melody[(bar * 6 + k + melodyShift) % melody.length], 0.2, k % 2 ? 0.4 : -0.4));
+    if (bar < airyBars) continue;
+    if (extraKalimba) [2, 10].forEach((s, k) => kalimba(music, t0 + s * STEP, melody[(bar + k * 5) % melody.length] + 12, 0.1, k ? -0.6 : 0.6));
+    [0, 6, 8, 11].forEach((s) => kick(music, t0 + s * STEP));
+    [4, 12].forEach((s) => rim(music, t0 + s * STEP));
+    for (let s = 0; s < 16; s++) shaker(music, t0 + s * STEP, s % 2 ? 0.16 : 0.07);
+    [[0, 3], [3, 2], [6, 2], [10, 3], [14, 2]].forEach(([s, l], k) => bass(music, t0 + s * STEP, c.bass + (k === 3 ? 12 : 0), l * STEP));
+  }
+  // Accord final qui résonne jusqu'à la fin.
+  const end = bars * 4 * BEAT;
+  kick(music, end, 1);
+  bass(music, end, 45, 1.8);
+  [69, 72, 76, 81].forEach((m, k) => kalimba(music, end + k * 0.06, m, 0.2, (k - 1.5) / 2));
+  pad(music, end, [57, 60, 64, 69], duration - end, 0.06);
+  return music;
 }
-// Accord final qui résonne jusqu'à la fin.
-const end = bars * 4 * BEAT;
-kick(music, end, 1);
-bass(music, end, 45, 1.8);
-[69, 72, 76, 81].forEach((m, k) => kalimba(music, end + k * 0.06, m, 0.2, (k - 1.5) / 2));
-pad(music, end, [57, 60, 64, 69], DURATION - end, 0.06);
+
+// Vidéo promo 14 s.
+const theme = makeMusic({ duration: 14, bars: 6, airyBars: 1, chords: [Am, F, C, G] });
+// Publicité 30 s en deux séquences de 15 s : ouverture aérée, puis relance plus dense.
+const pub1 = makeMusic({ duration: 15, bars: 7, airyBars: 1, chords: [Am, F, C, G] });
+const pub2 = makeMusic({ duration: 15, bars: 7, airyBars: 0, chords: [C, G, Am, F], melodyShift: 8, extraKalimba: true });
 
 // ---- Effets
 const whoosh = buffer(0.6);
@@ -109,6 +114,8 @@ function writeWav(file, { L, R }) {
 const suffix = { linux: '-gnu', win32: '-msvc' }[process.platform] ?? '';
 const ffmpeg = path.join(path.dirname(require.resolve(`@remotion/compositor-${process.platform}-${process.arch}${suffix}/package.json`)), process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
 fs.mkdirSync(out, { recursive: true });
-writeWav('aod-theme', music);
+writeWav('aod-theme', theme);
+writeWav('pub-partie-1', pub1);
+writeWav('pub-partie-2', pub2);
 writeWav('whoosh', whoosh);
 writeWav('chime', chime);

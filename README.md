@@ -75,9 +75,16 @@ Le dossier `remotion/` contient une vidéo promotionnelle animée aux couleurs A
 - `AodPromoVertical` (1080×1920) : statut WhatsApp, Reels, TikTok ;
 - `AodPromoLandscape` (1920×1080) : écran en boutique, YouTube, site.
 
+Une publicité de 30 s est découpée en deux séquences de 15 s, publiables ensemble ou séparément (stories, statut WhatsApp) :
+
+- `AodPubPartie1…` « La collection » : accroche, quatre produits phares, teaser vers la suite ;
+- `AodPubPartie2…` « Commander, c’est simple » : deux produits, les trois étapes (WhatsApp, choix, retrait/livraison), appel final ;
+- `AodPub30…` : les deux parties enchaînées. Chaque composition existe en `Vertical` et `Landscape`.
+
 ```sh
 npm run video:studio     # éditeur visuel (aperçu, choix des produits via les props)
 npm run video:render     # rend les deux formats dans out/
+npm run video:render:pub # publicité 30 s (complète + deux parties de 15 s) dans out/
 npm run video:typecheck
 npm run video:audio      # régénère la bande-son dans public/audio/
 ```
