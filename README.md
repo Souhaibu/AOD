@@ -81,12 +81,18 @@ Une publicité de 30 s est découpée en deux séquences de 15 s, publiables ens
 - `AodPubPartie2…` « Commander, c’est simple » : deux produits, les trois étapes (WhatsApp, choix, retrait/livraison), appel final ;
 - `AodPub30…` : les deux parties enchaînées. Chaque composition existe en `Vertical` et `Landscape`.
 
+`AodMontage60…` est un montage d’une minute calé sur la musique (120 BPM) : ouverture sur le logo, triptyque, chapitres Femme / Homme / Sacs & accessoires / Chaussures, enchaînement rapide, écran partagé, mosaïque, trois étapes de commande, citation et écran final WhatsApp. Grain, vignette et logo incrustés.
+
+Qualité : `remotion.config.ts` règle un encodage adapté aux téléphones (images intermédiaires JPEG 100, H.264 CRF 15, BT.709, AAC 320 kb/s). La vidéo utilise son propre dossier `remotion/public/` : visuels agrandis 2× par `scripts/upscale-video-images.py` et bande-son. Une photo n’est jamais agrandie au-delà de sa définition : si elle ne peut pas remplir l’écran nettement, elle est présentée encadrée sur un fond flou. Pour un résultat encore plus net, remplacer ces visuels par des photos ou vidéos originales en haute définition.
+
 ```sh
 npm run video:studio     # éditeur visuel (aperçu, choix des produits via les props)
 npm run video:render     # rend les deux formats dans out/
 npm run video:render:pub # publicité 30 s (complète + deux parties de 15 s) dans out/
+npm run video:render:montage # montage publicitaire d’une minute dans out/
+npm run video:images     # régénère les visuels agrandis de la vidéo (Python + Pillow)
 npm run video:typecheck
-npm run video:audio      # régénère la bande-son dans public/audio/
+npm run video:audio      # régénère la bande-son dans remotion/public/audio/
 ```
 
 La bande-son (musique 120 BPM en la mineur pentatonique, kalimba, percussions, souffles sur les transitions, carillon sur l’appel WhatsApp) est une création originale synthétisée par `scripts/generate-soundtrack.cjs` : aucun droit musical à gérer. Les polices sont embarquées (@fontsource), le rendu fonctionne donc hors ligne. Les visuels restent illustratifs, comme sur le site.

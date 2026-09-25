@@ -1,6 +1,7 @@
 import { Composition } from 'remotion';
 import { AodPromo, promoDuration, promoSchema } from './AodPromo';
 import { products } from '../src/data';
+import { AodMontage, MONTAGE } from './AodMontage';
 import { AodPub30, AodPubPartie1, AodPubPartie2, PART } from './AodPub';
 
 const formats = [
@@ -8,6 +9,7 @@ const formats = [
   { suffix: 'Landscape', width: 1920, height: 1080 },
 ];
 const pubs = [
+  { id: 'AodMontage60', component: AodMontage, frames: MONTAGE },
   { id: 'AodPub30', component: AodPub30, frames: 2 * PART },
   { id: 'AodPubPartie1', component: AodPubPartie1, frames: PART },
   { id: 'AodPubPartie2', component: AodPubPartie2, frames: PART },

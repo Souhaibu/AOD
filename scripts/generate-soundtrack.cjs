@@ -1,5 +1,5 @@
 // Génère la bande-son originale de la vidéo promo (aucune musique sous licence).
-// Usage : node scripts/generate-soundtrack.cjs  →  public/audio/*.mp3
+// Usage : node scripts/generate-soundtrack.cjs  →  remotion/public/audio/*.mp3
 const fs = require('fs');
 const { execFileSync } = require('child_process');
 const path = require('path');
@@ -8,7 +8,7 @@ const RATE = 44100;
 const BPM = 120;
 const BEAT = 60 / BPM;
 const STEP = BEAT / 4;
-const out = path.join(__dirname, '..', 'public', 'audio');
+const out = path.join(__dirname, '..', 'remotion', 'public', 'audio');
 
 const hz = (midi) => 440 * 2 ** ((midi - 69) / 12);
 const buffer = (seconds) => ({ L: new Float32Array(Math.ceil(seconds * RATE)), R: new Float32Array(Math.ceil(seconds * RATE)) });
@@ -80,6 +80,38 @@ const theme = makeMusic({ duration: 14, bars: 6, airyBars: 1, chords: [Am, F, C,
 const pub1 = makeMusic({ duration: 15, bars: 7, airyBars: 1, chords: [Am, F, C, G] });
 const pub2 = makeMusic({ duration: 15, bars: 7, airyBars: 0, chords: [C, G, Am, F], melodyShift: 8, extraKalimba: true });
 
+// Montage 60 s (30 mesures) : intro aérée, groove, pause, relance, accord final.
+function makeMontage() {
+  const duration = 60, music = buffer(duration);
+  const sectionOf = (bar) => (bar < 2 ? 'airy' : bar < 17 ? 'groove' : bar < 20 ? 'breakdown' : 'drop');
+  for (let bar = 0; bar < 28; bar++) {
+    const t0 = bar * 4 * BEAT, section = sectionOf(bar);
+    const c = (section === 'drop' ? [C, G, Am, F] : [Am, F, C, G])[bar % 4];
+    pad(music, t0, c.pad, 4 * BEAT + 0.3, section === 'breakdown' ? 0.08 : 0.05);
+    [0, 3, 6, 8, 11, 14].forEach((s, k) => kalimba(music, t0 + s * STEP, melody[(bar * 6 + k + (section === 'drop' ? 8 : 0)) % melody.length], 0.2, k % 2 ? 0.4 : -0.4));
+    if (section === 'airy') continue;
+    if (section === 'breakdown') {
+      // Pause : shaker léger et basse longue, puis roulement de caisse claire sur la dernière mesure.
+      for (let s = 0; s < 16; s += 2) shaker(music, t0 + s * STEP, 0.06);
+      bass(music, t0, c.bass, 4 * BEAT, 0.3);
+      if (bar === 19) for (let s = 0; s < 16; s++) rim(music, t0 + s * STEP, 0.05 + 0.2 * (s / 16));
+      continue;
+    }
+    if (section === 'drop') [2, 10].forEach((s, k) => kalimba(music, t0 + s * STEP, melody[(bar + k * 5) % melody.length] + 12, 0.1, k ? -0.6 : 0.6));
+    [0, 6, 8, 11].forEach((s) => kick(music, t0 + s * STEP));
+    [4, 12].forEach((s) => rim(music, t0 + s * STEP));
+    for (let s = 0; s < 16; s++) shaker(music, t0 + s * STEP, s % 2 ? 0.16 : 0.07);
+    [[0, 3], [3, 2], [6, 2], [10, 3], [14, 2]].forEach(([s, l], k) => bass(music, t0 + s * STEP, c.bass + (k === 3 ? 12 : 0), l * STEP));
+  }
+  const end = 28 * 4 * BEAT;
+  kick(music, end, 1);
+  bass(music, end, 45, 2.5);
+  [69, 72, 76, 81].forEach((m, k) => kalimba(music, end + k * 0.06, m, 0.2, (k - 1.5) / 2));
+  pad(music, end, [57, 60, 64, 69], duration - end, 0.07);
+  return music;
+}
+const montage = makeMontage();
+
 // ---- Effets
 const whoosh = buffer(0.6);
 { let lp = 0, lp2 = 0; add(whoosh, 0, 0.6, 0, (x) => {
@@ -90,6 +122,16 @@ const whoosh = buffer(0.6);
 const chime = buffer(2.2);
 [88, 93].forEach((m, k) => add(chime, k * 0.09, 2.1, k ? 0.3 : -0.3, (x) =>
   0.28 * (Math.sin(2 * Math.PI * hz(m) * x) + 0.3 * Math.sin(2 * Math.PI * hz(m) * 2.76 * x) * Math.exp(-x * 6)) * Math.exp(-x * 2.4) * Math.min(1, x * 800)));
+
+// Montée (2 s) avant les temps forts : bruit filtré qui s'ouvre + balayage de fréquence.
+const riser = buffer(2);
+{ let lp = 0; add(riser, 0, 2, 0, (x) => {
+  const p = x / 2, n = noise(); lp += (0.01 + 0.4 * p * p) * (n - lp);
+  return (0.5 * lp + 0.12 * Math.sin(2 * Math.PI * (200 * x + 400 * x * x))) * p * p;
+}); }
+// Impact grave sur les temps forts.
+const impact = buffer(1.8);
+add(impact, 0, 1.8, 0, (x) => Math.sin(2 * Math.PI * (38 * x + 50 * (1 - Math.exp(-x * 12)) / 12)) * Math.exp(-x * 2.2) + 0.4 * noise() * Math.exp(-x * 30));
 
 function writeWav(file, { L, R }) {
   // Normalisation à -1 dBFS.
@@ -117,5 +159,8 @@ fs.mkdirSync(out, { recursive: true });
 writeWav('aod-theme', theme);
 writeWav('pub-partie-1', pub1);
 writeWav('pub-partie-2', pub2);
+writeWav('montage-60s', montage);
 writeWav('whoosh', whoosh);
+writeWav('riser', riser);
+writeWav('impact', impact);
 writeWav('chime', chime);

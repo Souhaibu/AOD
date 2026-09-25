@@ -1,1 +1,1 @@
-{"extends":"../tsconfig.json","include":[".","../src/data.ts","../src/types.ts"]}
+{"extends":"../tsconfig.json","include":[".","../src/data.ts","../src/types.ts","../remotion.config.ts"]}
