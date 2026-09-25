@@ -1,0 +1,3 @@
+export type Product = { id: string; name: string; category: string; price: number; image: string; images?: string[]; description: string; material: string; sizes: string[]; colors: string[]; stock: number; featured: boolean; published: boolean; created_at: string };
+export type CartItem = { productId: string; size: string; color: string; quantity: number };
+export type Order = { id: string; reference: string; created_at: string; customer_name: string; phone: string; city: string; neighborhood: string; landmark: string; delivery: string; notes: string; total: number; status: string; payment_status: string; items: { name: string; size: string; color: string; quantity: number; price: number }[] };
