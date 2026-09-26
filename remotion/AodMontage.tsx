@@ -1,4 +1,4 @@
-import { AbsoluteFill, Audio, Img, Sequence, interpolate, random, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Audio, Easing, Img, Sequence, interpolate, random, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { MapPin, MessageCircle, ShoppingBag } from 'lucide-react';
 import { money, products } from '../src/data';
 import { imageSizes } from './imageSizes';
@@ -14,6 +14,14 @@ const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const;
 const ease = (frame: number, from: number, to: number, out: [number, number] = [0, 1]) =>
   interpolate(frame, [from, to], out, { ...clamp, easing: (t) => 1 - (1 - t) ** 3 });
 
+// Courbes « motion design » : départ vif, arrivée très douce.
+const expoOut = Easing.bezier(0.16, 1, 0.3, 1);
+const inOut = Easing.bezier(0.65, 0, 0.35, 1);
+const curve = (frame: number, from: number, to: number, easing = expoOut) => interpolate(frame, [from, to], [0, 1], { ...clamp, easing });
+
+// Recouvrement entre deux plans : la scène suivante se révèle par-dessus la précédente.
+const OVERLAP = 12;
+
 const fileOf = (productId: string) => {
   const p = products.find((x) => x.id === productId)!;
   return { file: p.image.split('/').pop()!, product: p };
@@ -25,7 +33,7 @@ type Box = [number, number];
 
 // Photo animée (zoom lent + dérive). Si la couvrir en plein cadre obligeait à l'agrandir au-delà de sa
 // définition, elle est présentée « encadrée » sur un fond flou : l'image reste nette sur téléphone.
-const Media: React.FC<{ file: string; box?: Box; zoom?: [number, number]; focus?: [number, number]; drift?: [number, number]; fit?: 'auto' | 'cover' }> = ({ file, box, zoom = [1.08, 1], focus = [50, 50], drift = [0, 0], fit = 'auto' }) => {
+const Media: React.FC<{ file: string; box?: Box; zoom?: [number, number]; focus?: [number, number]; drift?: [number, number]; orbit?: number; fit?: 'auto' | 'cover' }> = ({ file, box, zoom = [1.08, 1], focus = [50, 50], drift = [0, 0], orbit = 0, fit = 'auto' }) => {
   const frame = useCurrentFrame();
   const { width, height, durationInFrames } = useVideoConfig();
   const [bw, bh] = box ?? [width, height];
@@ -37,7 +45,9 @@ const Media: React.FC<{ file: string; box?: Box; zoom?: [number, number]; focus?
   const card = fit === 'auto' && Math.max(bw / iw, bh / ih) * Math.max(...zoom) > 0.85;
   const cover: React.CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' };
   if (!card) {
-    return <Img src={src} style={{ ...cover, objectPosition: `${focus[0]}% ${focus[1]}%`, transformOrigin: `${focus[0]}% ${focus[1]}%`, transform: `scale(${z}) translate(${dx}%, ${dy}%)` }} />;
+    // orbit : légère rotation en perspective, comme une caméra qui tourne autour du sujet.
+    const rot = orbit ? `perspective(1600px) rotateY(${orbit * (t - 0.5)}deg) ` : '';
+    return <Img src={src} style={{ ...cover, objectPosition: `${focus[0]}% ${focus[1]}%`, transformOrigin: `${focus[0]}% ${focus[1]}%`, transform: `${rot}scale(${z}) translate(${dx}%, ${dy}%)` }} />;
   }
   const scale = Math.min((bw * 0.86) / iw, (bh * 0.8) / ih);
   return (
@@ -98,17 +108,122 @@ const Label: React.FC<{ children: React.ReactNode; color?: string }> = ({ childr
   return <span style={{ fontFamily: sans, fontWeight: 600, letterSpacing: 7 * unit, fontSize: 24 * unit, color }}>{children}</span>;
 };
 
-// Bandeau produit : panneau crème qui glisse depuis la gauche.
+// Texte révélé derrière un cache (il monte depuis une ligne invisible) : typographie « titrage cinéma ».
+const MaskReveal: React.FC<{ delay?: number; dur?: number; children: React.ReactNode; style?: React.CSSProperties }> = ({ delay = 0, dur = 16, children, style }) => {
+  const p = curve(useCurrentFrame(), delay, delay + dur);
+  return (
+    <div style={{ overflow: 'hidden', paddingBottom: '0.08em', ...style }}>
+      <div style={{ transform: `translateY(${(1 - p) * 110}%)`, opacity: p > 0 ? 1 : 0 }}>{children}</div>
+    </div>
+  );
+};
+
+// Reflet lumineux qui balaie un texte (logo, titres).
+const Shine: React.FC<{ text: string; at: number; style: React.CSSProperties }> = ({ text, at, style }) => {
+  const frame = useCurrentFrame();
+  const x = interpolate(frame, [at, at + 24], [-60, 160], clamp);
+  const on = frame >= at && frame <= at + 24;
+  return (
+    <span style={{ ...style, position: 'absolute', inset: 0, display: on ? 'flex' : 'none', justifyContent: 'center', alignItems: 'center', color: 'transparent',
+      backgroundImage: `linear-gradient(105deg, transparent ${x - 18}%, rgba(255,247,222,.95) ${x}%, transparent ${x + 18}%)`, WebkitBackgroundClip: 'text', backgroundClip: 'text' }}>{text}</span>
+  );
+};
+
+// Particules dorées en suspension (déterministes : même rendu à chaque image).
+const Particles: React.FC<{ count?: number; seed?: string; color?: string; opacity?: number }> = ({ count = 28, seed = 'p', color = colors.gold, opacity = 0.55 }) => {
+  const frame = useCurrentFrame();
+  const { width, height } = useVideoConfig();
+  const { unit } = useLayout();
+  const fade = ease(frame, 0, 18);
+  return (
+    <AbsoluteFill style={{ pointerEvents: 'none' }}>
+      {Array.from({ length: count }, (_, i) => {
+        const r = (k: string) => random(`${seed}-${i}-${k}`);
+        const size = (2 + r('s') * 6) * unit;
+        const x = r('x') * width + Math.sin(frame / 40 + r('ph') * 6.28) * 24 * unit;
+        const y = (((r('y') * height - frame * (0.4 + r('v')) * 1.3 * unit) % height) + height) % height;
+        const twinkle = 0.35 + 0.65 * Math.abs(Math.sin(frame / (10 + r('t') * 22) + r('ph') * 6));
+        return <div key={i} style={{ position: 'absolute', left: x, top: y, width: size, height: size, borderRadius: '50%', background: color, opacity: opacity * twinkle * fade, boxShadow: `0 0 ${size * 3}px ${color}`, filter: r('b') > 0.7 ? `blur(${size * 0.5}px)` : undefined }} />;
+      })}
+    </AbsoluteFill>
+  );
+};
+
+// Fuite de lumière chaude sur les temps forts.
+const LightLeak: React.FC<{ dur?: number }> = ({ dur = 36 }) => {
+  const frame = useCurrentFrame();
+  const o = interpolate(frame, [0, dur * 0.3, dur], [0, 0.75, 0], clamp);
+  const x = interpolate(frame, [0, dur], [-10, 110]);
+  return <AbsoluteFill style={{ mixBlendMode: 'screen', opacity: o, pointerEvents: 'none', background: `radial-gradient(ellipse 60% 45% at ${x}% 35%, #ffcf7a, transparent 70%), radial-gradient(ellipse 40% 60% at ${100 - x}% 80%, #ff9b54aa, transparent 70%)` }} />;
+};
+
+// Bandes « cinéma » qui entrent en haut et en bas de l'image.
+const Letterbox: React.FC<{ delay?: number }> = ({ delay = 0 }) => {
+  const p = curve(useCurrentFrame(), delay, delay + 18);
+  const bar: React.CSSProperties = { position: 'absolute', left: 0, right: 0, height: `${p * 9}%`, background: '#05101b' };
+  return <AbsoluteFill style={{ pointerEvents: 'none' }}><div style={{ ...bar, top: 0 }} /><div style={{ ...bar, bottom: 0 }} /></AbsoluteFill>;
+};
+
+type RevealKind = 'cut' | 'circle' | 'wipe' | 'diagonal' | 'split' | 'stripes';
+
+// Transition d'entrée : la scène se découvre (cercle, volet, diagonale, rideaux, bandes), avec un liseré or.
+const Reveal: React.FC<{ kind: RevealKind; children: React.ReactNode }> = ({ kind, children }) => {
+  const frame = useCurrentFrame();
+  const { width, height } = useVideoConfig();
+  const { unit } = useLayout();
+  const p = interpolate(frame, [0, OVERLAP], [0, 1], { ...clamp, easing: inOut });
+  if (kind === 'cut' || p >= 1) return <AbsoluteFill>{children}</AbsoluteFill>;
+  const edge = 7 * unit;
+  let clip = '', gold = '';
+  if (kind === 'circle') {
+    const r = p * 0.76 * Math.hypot(width, height);
+    clip = `circle(${r}px at 50% 50%)`;
+    gold = `circle(${r + edge}px at 50% 50%)`;
+  } else if (kind === 'wipe') {
+    clip = `inset(0 ${(1 - p) * 100}% 0 0)`;
+    gold = `inset(0 ${Math.max(0, (1 - p) * 100 - 1.2)}% 0 0)`;
+  } else if (kind === 'diagonal') {
+    const x = p * 150;
+    clip = `polygon(0 0, ${x}% 0, ${x - 50}% 100%, 0 100%)`;
+    gold = `polygon(0 0, ${x + 2}% 0, ${x - 48}% 100%, 0 100%)`;
+  } else if (kind === 'split') {
+    clip = `inset(0 ${(1 - p) * 50}% 0 ${(1 - p) * 50}%)`;
+    gold = `inset(0 ${Math.max(0, (1 - p) * 50 - 1)}% 0 ${Math.max(0, (1 - p) * 50 - 1)}%)`;
+  } else {
+    // Bandes horizontales décalées dans le temps.
+    const n = 6, poly = (lead: number) => Array.from({ length: n }, (_, i) => {
+      const w = interpolate(frame, [i * 1.2, OVERLAP - (n - 1 - i) * 0.4], [0, 100], { ...clamp, easing: inOut }) + lead;
+      const y0 = (i / n) * 100, y1 = ((i + 1) / n) * 100;
+      return `0% ${y0}%, ${w}% ${y0}%, ${w}% ${y1}%, 0% ${y1}%`;
+    }).join(', ');
+    clip = `polygon(${poly(0)})`;
+    gold = `polygon(${poly(6)})`;
+  }
+  return (
+    <AbsoluteFill>
+      <AbsoluteFill style={{ background: `linear-gradient(90deg, ${colors.goldDark}, ${colors.gold})`, clipPath: gold }} />
+      <AbsoluteFill style={{ clipPath: clip }}>{children}</AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
+
+// Bandeau produit animé en plusieurs temps : filet or, panneau, catégorie, nom, puis prix qui défile.
 const LowerThird: React.FC<{ productId: string; delay?: number }> = ({ productId, delay = 12 }) => {
   const frame = useCurrentFrame();
   const { vertical, unit } = useLayout();
   const { product } = fileOf(productId);
-  const x = ease(frame, delay, delay + 12, [-110, 0]);
+  const bar = curve(frame, delay, delay + 8);
+  const panel = curve(frame, delay + 4, delay + 18);
+  const count = curve(frame, delay + 14, delay + 36, Easing.out(Easing.cubic));
+  const price = Math.round((product.price * count) / 1000) * 1000;
   return (
-    <div style={{ position: 'absolute', left: 0, bottom: (vertical ? 260 : 90) * unit, transform: `translateX(${x}%)`, background: `${colors.cream}f2`, padding: `${26 * unit}px ${44 * unit}px ${26 * unit}px ${60 * unit}px`, borderLeft: `${10 * unit}px solid ${colors.gold}`, display: 'flex', flexDirection: 'column', gap: 8 * unit, boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
-      <Label color={colors.goldDark}>{product.category.toUpperCase()}</Label>
-      <span style={{ fontFamily: serif, fontSize: 64 * unit, color: colors.navy, lineHeight: 1.05 }}>{product.name}</span>
-      <span style={{ fontFamily: sans, fontWeight: 600, fontSize: 34 * unit, color: colors.ink }}>{money(product.price)}</span>
+    <div style={{ position: 'absolute', left: 0, bottom: (vertical ? 260 : 90) * unit, display: 'flex', filter: 'drop-shadow(0 20px 40px rgba(0,0,0,.3))' }}>
+      <div style={{ width: 10 * unit, background: colors.gold, transform: `scaleY(${bar})`, transformOrigin: 'bottom' }} />
+      <div style={{ clipPath: `inset(0 ${(1 - panel) * 100}% 0 0)`, background: `${colors.cream}f4`, padding: `${26 * unit}px ${48 * unit}px ${26 * unit}px ${50 * unit}px`, display: 'flex', flexDirection: 'column', gap: 6 * unit }}>
+        <MaskReveal delay={delay + 10} dur={12}><Label color={colors.goldDark}>{product.category.toUpperCase()}</Label></MaskReveal>
+        <MaskReveal delay={delay + 13}><span style={{ fontFamily: serif, fontSize: 64 * unit, color: colors.navy, lineHeight: 1.05 }}>{product.name}</span></MaskReveal>
+        <MaskReveal delay={delay + 14} dur={10}><span style={{ fontFamily: sans, fontWeight: 600, fontSize: 34 * unit, color: colors.ink, fontVariantNumeric: 'tabular-nums' }}>{money(price)}</span></MaskReveal>
+      </div>
     </div>
   );
 };
@@ -130,21 +245,31 @@ const ColdOpen = () => {
   const { unit } = useLayout();
   const leak = interpolate(frame, [0, 120], [-40, 140]);
   const spacing = ease(frame, 18, 80, [70, 14]);
+  const logo: React.CSSProperties = { fontFamily: serif, fontSize: 250 * unit, lineHeight: 1, letterSpacing: spacing * unit };
+  const ring = curve(frame, 4, 50, inOut);
   return (
     <AbsoluteFill style={{ background: colors.navyDeep, justifyContent: 'center', alignItems: 'center' }}>
       <AbsoluteFill style={{ background: `radial-gradient(circle at ${leak}% 40%, ${colors.gold}40, transparent 45%)` }} />
+      <Particles seed="open" count={34} />
+      <svg style={{ position: 'absolute', width: 760 * unit, height: 760 * unit, transform: `rotate(${-90 + frame * 0.4}deg) scale(${interpolate(frame, [0, 120], [0.96, 1.04])})` }} viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="48" fill="none" stroke={colors.gold} strokeOpacity={0.35} strokeWidth={0.25} strokeDasharray={301.6} strokeDashoffset={301.6 * (1 - ring)} />
+      </svg>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 30 * unit, transform: `scale(${interpolate(frame, [0, 120], [1, 1.06])})` }}>
         <Line width={260 * unit} />
-        <Kinetic text="AOD" delay={16} stagger={6} style={{ fontFamily: serif, fontSize: 250 * unit, lineHeight: 1, color: colors.cream, letterSpacing: spacing * unit }} />
+        <div style={{ position: 'relative' }}>
+          <Kinetic text="AOD" delay={16} stagger={6} style={{ ...logo, color: colors.cream }} />
+          <Shine text="AOD" at={66} style={logo} />
+        </div>
         <Line delay={10} width={260 * unit} />
-        <div style={{ opacity: ease(frame, 50, 66) }}><Label>VENTES & SERVICES</Label></div>
-        <div style={{ opacity: ease(frame, 70, 86) }}><Label color={colors.sand}>MADINA · CONAKRY</Label></div>
+        <MaskReveal delay={50}><Label>VENTES & SERVICES</Label></MaskReveal>
+        <MaskReveal delay={70}><Label color={colors.sand}>MADINA · CONAKRY</Label></MaskReveal>
       </div>
     </AbsoluteFill>
   );
 };
 
 const Triptych = () => {
+  const frame = useCurrentFrame();
   const { vertical, unit } = useLayout();
   const { width, height } = useVideoConfig();
   const cells: { file: string; word: string; from: 'left' | 'right' | 'up' | 'down' }[] = [
@@ -154,13 +279,14 @@ const Triptych = () => {
   ];
   const box: Box = vertical ? [width, height / 3] : [width / 3, height];
   return (
-    <AbsoluteFill style={{ background: colors.gold, flexDirection: vertical ? 'column' : 'row', gap: 6 * unit }}>
+    <AbsoluteFill style={{ background: colors.navyDeep, flexDirection: vertical ? 'column' : 'row', gap: 6 * unit }}>
       {cells.map((c, i) => (
         <div key={c.file} style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           <WhipIn from={c.from} delay={i * 8}>
             <Media file={c.file} box={box} zoom={[1.15, 1]} focus={[50, 30]} fit="cover" />
             <AbsoluteFill style={{ background: `linear-gradient(0deg, ${colors.navyDeep}bb, transparent 60%)`, justifyContent: 'flex-end', padding: 50 * unit }}>
-              <Kinetic text={c.word} delay={22 + i * 15} style={{ fontFamily: serif, fontStyle: 'italic', fontSize: 96 * unit, color: colors.cream }} />
+              <MaskReveal delay={20 + i * 15} dur={16}><span style={{ fontFamily: serif, fontStyle: 'italic', fontSize: 96 * unit, color: colors.cream }}>{c.word}</span></MaskReveal>
+              <div style={{ height: 3, width: curve(frame, 28 + i * 15, 44 + i * 15) * 120 * unit, background: colors.gold, marginTop: 10 * unit }} />
             </AbsoluteFill>
           </WhipIn>
         </div>
@@ -173,20 +299,21 @@ const Chapter: React.FC<{ n: string; title: string }> = ({ n, title }) => {
   const frame = useCurrentFrame();
   const { unit } = useLayout();
   return (
-    <AbsoluteFill style={{ background: colors.navy, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-      <span style={{ position: 'absolute', fontFamily: serif, fontSize: 900 * unit, color: 'transparent', WebkitTextStroke: `2px ${colors.gold}33`, transform: `translateX(${interpolate(frame, [0, 30], [8, -8])}%)` }}>{n}</span>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 20 * unit, padding: `0 ${60 * unit}px` }}>
-        <Kinetic text={n} stagger={2} style={{ fontFamily: sans, fontWeight: 600, fontSize: 34 * unit, letterSpacing: 10 * unit, color: colors.gold }} />
-        <Kinetic text={title} delay={3} stagger={0.8} style={{ fontFamily: serif, fontSize: 130 * unit, color: colors.cream, lineHeight: 1 }} />
-        <Line delay={6} width={200 * unit} />
+    <AbsoluteFill style={{ background: `radial-gradient(circle at 50% 45%, ${colors.navy}, ${colors.navyDeep} 75%)`, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
+      <span style={{ position: 'absolute', fontFamily: serif, fontSize: 900 * unit, color: 'transparent', WebkitTextStroke: `2px ${colors.gold}33`, transform: `translateX(${interpolate(frame, [0, 42], [8, -8])}%) scale(${interpolate(frame, [0, 42], [1.08, 1])})` }}>{n}</span>
+      <Particles seed={`ch${n}`} count={18} opacity={0.4} />
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 18 * unit, padding: `0 ${60 * unit}px` }}>
+        <MaskReveal delay={2} dur={12}><span style={{ fontFamily: sans, fontWeight: 600, fontSize: 34 * unit, letterSpacing: 10 * unit, color: colors.gold }}>{n}</span></MaskReveal>
+        <MaskReveal delay={5} dur={16}><span style={{ fontFamily: serif, fontSize: 130 * unit, color: colors.cream, lineHeight: 1 }}>{title}</span></MaskReveal>
+        <Line delay={9} width={200 * unit} />
       </div>
     </AbsoluteFill>
   );
 };
 
-const Shot: React.FC<{ file: string; from?: 'left' | 'right' | 'up' | 'down' | 'zoom'; zoom?: [number, number]; focus?: [number, number]; drift?: [number, number]; productId?: string; caption?: string; flash?: boolean }> = ({ file, from = 'right', zoom, focus, drift, productId, caption, flash = true }) => (
+const Shot: React.FC<{ file: string; from?: 'left' | 'right' | 'up' | 'down' | 'zoom'; zoom?: [number, number]; focus?: [number, number]; drift?: [number, number]; orbit?: number; productId?: string; caption?: string; flash?: boolean }> = ({ file, from = 'right', zoom, focus, drift, orbit, productId, caption, flash = true }) => (
   <AbsoluteFill style={{ background: colors.navyDeep }}>
-    <WhipIn from={from}><Media file={file} zoom={zoom} focus={focus} drift={drift} /></WhipIn>
+    <WhipIn from={from}><Media file={file} zoom={zoom} focus={focus} drift={drift} orbit={orbit} /></WhipIn>
     {caption && <Caption text={caption} />}
     {productId && <LowerThird productId={productId} />}
     {flash && <Flash />}
@@ -198,9 +325,13 @@ const Tag: React.FC<{ productId: string }> = ({ productId }) => {
   const frame = useCurrentFrame();
   const { vertical, unit } = useLayout();
   const { product } = fileOf(productId);
+  const p = curve(frame, 2, 12);
   return (
-    <div style={{ position: 'absolute', right: 50 * unit, top: (vertical ? 260 : 80) * unit, opacity: ease(frame, 3, 9), background: colors.navy, color: colors.cream, padding: `${14 * unit}px ${26 * unit}px`, fontFamily: sans, fontWeight: 600, fontSize: 28 * unit, letterSpacing: 2 * unit, borderRight: `${6 * unit}px solid ${colors.gold}` }}>
-      {product.name} · {money(product.price)}
+    <div style={{ position: 'absolute', right: 50 * unit, top: (vertical ? 260 : 80) * unit, display: 'flex', clipPath: `inset(0 0 0 ${(1 - p) * 100}%)`, filter: 'drop-shadow(0 10px 30px rgba(0,0,0,.35))' }}>
+      <div style={{ background: colors.navy, color: colors.cream, padding: `${14 * unit}px ${26 * unit}px`, fontFamily: sans, fontWeight: 600, fontSize: 28 * unit, letterSpacing: 2 * unit, transform: `translateX(${(1 - p) * 30}%)` }}>
+        {product.name} · <span style={{ color: colors.gold }}>{money(product.price)}</span>
+      </div>
+      <div style={{ width: 6 * unit, background: colors.gold }} />
     </div>
   );
 };
@@ -223,8 +354,9 @@ const SplitShoes = () => {
             <WhipIn from={it.from} delay={i * 10}>
               <Media file={file} box={box} zoom={[1.1, 1]} drift={[i ? -4 : 4, 0]} fit="cover" />
               <AbsoluteFill style={{ justifyContent: 'flex-end', alignItems: i ? 'flex-end' : 'flex-start', padding: 50 * unit, background: `linear-gradient(0deg, ${colors.navyDeep}aa, transparent 50%)` }}>
-                <Kinetic text={product.name} delay={22 + i * 10} stagger={0.8} style={{ fontFamily: serif, fontSize: 70 * unit, color: colors.cream }} />
-                <span style={{ fontFamily: sans, fontWeight: 600, fontSize: 32 * unit, color: colors.gold, opacity: ease(frame, 36 + i * 10, 46 + i * 10) }}>{money(product.price)}</span>
+                <MaskReveal delay={20 + i * 10}><span style={{ fontFamily: serif, fontSize: 70 * unit, color: colors.cream }}>{product.name}</span></MaskReveal>
+                <div style={{ height: 3, width: curve(frame, 28 + i * 10, 44 + i * 10) * 160 * unit, background: colors.gold, margin: `${8 * unit}px 0` }} />
+                <MaskReveal delay={32 + i * 10} dur={12}><span style={{ fontFamily: sans, fontWeight: 600, fontSize: 32 * unit, color: colors.gold }}>{money(product.price)}</span></MaskReveal>
               </AbsoluteFill>
             </WhipIn>
           </div>
@@ -236,28 +368,31 @@ const SplitShoes = () => {
 
 const Mosaic = () => {
   const frame = useCurrentFrame();
-  const { fps, width, height } = useVideoConfig();
+  const { width, height } = useVideoConfig();
   const { vertical, unit } = useLayout();
   const ids = ['robe-lumiere', 'chemise-essentielle', 'sac-atelier', 'sandales-rivage', 'sac-voyage', 'lunettes-horizon'];
   const cols = vertical ? 2 : 3, rows = vertical ? 3 : 2;
   const box: Box = [width / cols, height / rows];
   const veil = ease(frame, 95, 115, [0, 0.72]);
+  const clips = [(p: number) => `inset(0 ${(1 - p) * 100}% 0 0)`, (p: number) => `inset(${(1 - p) * 100}% 0 0 0)`, (p: number) => `inset(0 0 0 ${(1 - p) * 100}%)`, (p: number) => `inset(0 0 ${(1 - p) * 100}% 0)`];
   return (
     <AbsoluteFill style={{ background: colors.navyDeep }}>
-      <div style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gridTemplateRows: `repeat(${rows}, 1fr)`, gap: 6 * unit, transform: `scale(${interpolate(frame, [0, 180], [1, 1.08])})` }}>
+      <div style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gridTemplateRows: `repeat(${rows}, 1fr)`, gap: 6 * unit, transform: `scale(${interpolate(frame, [0, 180], [1, 1.1])})`, filter: `blur(${ease(frame, 95, 120, [0, 7])}px)` }}>
         {ids.map((id, i) => {
-          const p = spring({ frame: frame - i * 15, fps, config: { damping: 16, stiffness: 140 } });
+          const p = curve(frame, i * 15, i * 15 + 16, inOut);
           return (
-            <div key={id} style={{ position: 'relative', overflow: 'hidden', opacity: Math.min(1, p * 1.5), transform: `scale(${0.85 + 0.15 * p})` }}>
-              <Media file={fileOf(id).file} box={box} zoom={[1.12, 1]} fit="cover" />
+            <div key={id} style={{ position: 'relative', overflow: 'hidden', clipPath: clips[i % 4](p), background: colors.gold }}>
+              <div style={{ position: 'absolute', inset: 0, transform: `scale(${1.25 - 0.25 * p})` }}><Media file={fileOf(id).file} box={box} zoom={[1.12, 1]} fit="cover" /></div>
             </div>
           );
         })}
       </div>
       <AbsoluteFill style={{ background: colors.navyDeep, opacity: veil }} />
-      <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center', gap: 24 * unit, flexDirection: 'column', padding: 60 * unit }}>
-        <Kinetic text="Une sélection." delay={105} stagger={1.2} style={{ fontFamily: serif, fontSize: 110 * unit, color: colors.cream }} />
-        <Kinetic text="Mille façons d’être vous." delay={122} stagger={0.9} style={{ fontFamily: serif, fontStyle: 'italic', fontSize: 80 * unit, color: colors.gold }} />
+      <Sequence from={95}><Particles seed="mosaic" count={24} /></Sequence>
+      <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center', gap: 20 * unit, flexDirection: 'column', padding: 60 * unit }}>
+        <MaskReveal delay={105} dur={18}><span style={{ fontFamily: serif, fontSize: 110 * unit, color: colors.cream }}>Une sélection.</span></MaskReveal>
+        <Line delay={116} width={180 * unit} />
+        <MaskReveal delay={122} dur={18}><span style={{ fontFamily: serif, fontStyle: 'italic', fontSize: 80 * unit, color: colors.gold }}>Mille façons d’être vous.</span></MaskReveal>
       </AbsoluteFill>
     </AbsoluteFill>
   );
@@ -269,23 +404,38 @@ const steps = [
   { n: '03', title: 'Retrait à Madina ou livraison', text: 'Tout est confirmé avec vous avant le paiement.', file: 'aod-homme.webp', Icon: MapPin },
 ];
 
-const Step: React.FC<(typeof steps)[number]> = ({ n, title, text, file, Icon }) => {
+const Step: React.FC<(typeof steps)[number] & { index: number }> = ({ n, title, text, file, Icon, index }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const { unit } = useLayout();
-  const pop = spring({ frame: frame - 4, fps, config: { damping: 12, stiffness: 160 } });
+  const { vertical, unit } = useLayout();
+  const ring = curve(frame, 2, 26, inOut);
+  const pop = spring({ frame: frame - 10, fps, config: { damping: 12, stiffness: 160 } });
   return (
     <AbsoluteFill style={{ background: colors.navyDeep }}>
       <WhipIn from="zoom">
         <AbsoluteFill style={{ opacity: 0.35, filter: 'blur(6px)' }}><Media file={file} zoom={[1.15, 1.05]} fit="cover" /></AbsoluteFill>
         <AbsoluteFill style={{ background: `radial-gradient(circle at 50% 45%, ${colors.navy}66, ${colors.navyDeep}ee 70%)` }} />
+        <Particles seed={`step${n}`} count={16} opacity={0.35} />
+        {/* Progression des trois étapes */}
+        <div style={{ position: 'absolute', top: (vertical ? 250 : 90) * unit, left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: 14 * unit }}>
+          {steps.map((_, k) => (
+            <div key={k} style={{ width: 110 * unit, height: 5 * unit, borderRadius: 3 * unit, background: `${colors.cream}33`, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${k < index ? 100 : k === index ? curve(frame, 0, 80, (t) => t) * 100 : 0}%`, background: colors.gold }} />
+            </div>
+          ))}
+        </div>
         <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center', gap: 26 * unit, padding: 80 * unit }}>
-          <div style={{ width: 150 * unit, height: 150 * unit, borderRadius: '50%', background: colors.gold, display: 'flex', alignItems: 'center', justifyContent: 'center', transform: `scale(${pop})` }}>
-            <Icon size={70 * unit} color={colors.navyDeep} strokeWidth={1.8} />
+          <div style={{ position: 'relative', width: 190 * unit, height: 190 * unit, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }} viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="47" fill="none" stroke={colors.gold} strokeWidth={1.6} strokeDasharray={295.3} strokeDashoffset={295.3 * (1 - ring)} strokeLinecap="round" />
+            </svg>
+            <div style={{ width: 140 * unit, height: 140 * unit, borderRadius: '50%', background: colors.gold, display: 'flex', alignItems: 'center', justifyContent: 'center', transform: `scale(${pop})`, boxShadow: `0 0 ${50 * unit}px ${colors.gold}55` }}>
+              <Icon size={64 * unit} color={colors.navyDeep} strokeWidth={1.8} />
+            </div>
           </div>
-          <Kinetic text={`ÉTAPE ${n}`} delay={8} stagger={1} style={{ fontFamily: sans, fontWeight: 600, fontSize: 28 * unit, letterSpacing: 8 * unit, color: colors.gold }} />
-          <Kinetic text={title} delay={12} stagger={0.7} style={{ fontFamily: serif, fontSize: 86 * unit, lineHeight: 1.1, color: colors.cream, maxWidth: 1500 * unit }} />
-          <div style={{ opacity: ease(frame, 30, 44) }}><span style={{ fontFamily: sans, fontSize: 36 * unit, color: colors.sand }}>{text}</span></div>
+          <MaskReveal delay={10} dur={12}><span style={{ fontFamily: sans, fontWeight: 600, fontSize: 28 * unit, letterSpacing: 8 * unit, color: colors.gold }}>ÉTAPE {n}</span></MaskReveal>
+          <Kinetic text={title} delay={14} stagger={0.7} style={{ fontFamily: serif, fontSize: 86 * unit, lineHeight: 1.1, color: colors.cream, maxWidth: 1500 * unit }} />
+          <MaskReveal delay={30} dur={14}><span style={{ fontFamily: sans, fontSize: 36 * unit, color: colors.sand }}>{text}</span></MaskReveal>
         </AbsoluteFill>
       </WhipIn>
       <Flash strength={0.35} />
@@ -295,12 +445,19 @@ const Step: React.FC<(typeof steps)[number]> = ({ n, title, text, file, Icon }) 
 
 const HeroQuote = () => {
   const { unit } = useLayout();
+  const logo: React.CSSProperties = { fontFamily: serif, fontSize: 140 * unit, lineHeight: 1 };
   return (
     <AbsoluteFill style={{ background: colors.navyDeep }}>
-      <WhipIn from="zoom"><Media file="aod-conakry-hero.webp" zoom={[1.02, 1.12]} focus={[50, 25]} /></WhipIn>
-      <AbsoluteFill style={{ background: `linear-gradient(180deg, transparent 35%, ${colors.navyDeep}e6 85%)`, justifyContent: 'flex-end', alignItems: 'center', textAlign: 'center', paddingBottom: 280 * unit, gap: 10 * unit }}>
-        <Kinetic text="D’ici." delay={8} stagger={2} style={{ fontFamily: serif, fontSize: 140 * unit, color: colors.cream, lineHeight: 1 }} />
-        <Kinetic text="Avec caractère." delay={24} stagger={1.2} style={{ fontFamily: serif, fontStyle: 'italic', fontSize: 110 * unit, color: colors.gold, lineHeight: 1.1 }} />
+      <WhipIn from="zoom"><Media file="aod-conakry-hero.webp" zoom={[1.04, 1.14]} focus={[50, 25]} orbit={3} /></WhipIn>
+      <AbsoluteFill style={{ background: `linear-gradient(180deg, transparent 35%, ${colors.navyDeep}e6 85%)` }} />
+      <Particles seed="hero" count={20} opacity={0.45} />
+      <Letterbox delay={2} />
+      <AbsoluteFill style={{ justifyContent: 'flex-end', alignItems: 'center', textAlign: 'center', paddingBottom: 280 * unit, gap: 10 * unit }}>
+        <div style={{ position: 'relative' }}>
+          <Kinetic text="D’ici." delay={8} stagger={2} style={{ ...logo, color: colors.cream }} />
+          <Shine text="D’ici." at={40} style={logo} />
+        </div>
+        <MaskReveal delay={24} dur={18}><span style={{ fontFamily: serif, fontStyle: 'italic', fontSize: 110 * unit, color: colors.gold, lineHeight: 1.1 }}>Avec caractère.</span></MaskReveal>
       </AbsoluteFill>
       <Flash />
     </AbsoluteFill>
@@ -315,20 +472,36 @@ const Finale = () => {
   const pulse = 1 + 0.025 * Math.sin(Math.max(0, frame - 60) / 6);
   const fadeOut = interpolate(frame, [durationInFrames - 30, durationInFrames], [1, 0], clamp);
   const leak = interpolate(frame, [0, durationInFrames], [120, -20]);
+  const logo: React.CSSProperties = { fontFamily: serif, fontSize: 150 * unit, letterSpacing: 14 * unit, lineHeight: 1 };
+  const shineX = interpolate((frame - 70) % 75, [0, 30], [-40, 140], clamp);
   return (
-    <AbsoluteFill style={{ background: colors.navy, justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: 80 * unit }}>
+    <AbsoluteFill style={{ background: `radial-gradient(circle at 50% 40%, ${colors.navy}, ${colors.navyDeep} 80%)`, justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: 80 * unit }}>
       <AbsoluteFill style={{ background: `radial-gradient(circle at ${leak}% 30%, ${colors.gold}30, transparent 45%)` }} />
+      <Particles seed="finale" count={40} />
       <div style={{ opacity: fadeOut, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 34 * unit }}>
-        <Kinetic text="AOD" stagger={4} style={{ fontFamily: serif, fontSize: 150 * unit, color: colors.cream, letterSpacing: 14 * unit, lineHeight: 1 }} />
+        <div style={{ position: 'relative' }}>
+          <Kinetic text="AOD" stagger={4} style={{ ...logo, color: colors.cream }} />
+          <Shine text="AOD" at={24} style={logo} />
+        </div>
         <Line delay={8} width={220 * unit} />
-        <Kinetic text="Une envie ? Parlons-en." delay={14} stagger={0.8} style={{ fontFamily: serif, fontStyle: 'italic', fontSize: 84 * unit, color: colors.gold }} />
-        <div style={{ transform: `scale(${pop * pulse})`, display: 'flex', alignItems: 'center', gap: 18 * unit, background: colors.gold, color: colors.navyDeep, fontFamily: sans, fontWeight: 600, fontSize: 42 * unit, padding: `${26 * unit}px ${54 * unit}px`, borderRadius: 999, boxShadow: `0 0 ${60 * unit}px ${colors.gold}55` }}>
-          <MessageCircle size={46 * unit} strokeWidth={2} /> WhatsApp · {phone}
+        <MaskReveal delay={14} dur={18}><span style={{ fontFamily: serif, fontStyle: 'italic', fontSize: 84 * unit, color: colors.gold }}>Une envie ? Parlons-en.</span></MaskReveal>
+        <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          {/* Ondes qui partent du bouton WhatsApp */}
+          {[0, 25].map((offset) => {
+            const t = ((Math.max(0, frame - 55 - offset)) % 50) / 50;
+            return frame > 55 + offset && <div key={offset} style={{ position: 'absolute', inset: 0, borderRadius: 999, border: `${3 * unit}px solid ${colors.gold}`, opacity: (1 - t) * 0.6, transform: `scale(${1 + t * 0.35}, ${1 + t * 0.9})` }} />;
+          })}
+          <div style={{ position: 'relative', overflow: 'hidden', transform: `scale(${pop * pulse})`, display: 'flex', alignItems: 'center', gap: 18 * unit, background: colors.gold, color: colors.navyDeep, fontFamily: sans, fontWeight: 600, fontSize: 42 * unit, padding: `${26 * unit}px ${54 * unit}px`, borderRadius: 999, boxShadow: `0 0 ${60 * unit}px ${colors.gold}55` }}>
+            <MessageCircle size={46 * unit} strokeWidth={2} /> WhatsApp · {phone}
+            <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(105deg, transparent ${shineX - 15}%, rgba(255,255,255,.55) ${shineX}%, transparent ${shineX + 15}%)` }} />
+          </div>
         </div>
-        <div style={{ opacity: ease(frame, 60, 75), display: 'flex', alignItems: 'center', gap: 10 * unit }}>
-          <MapPin size={30 * unit} color={colors.gold} />
-          <span style={{ fontFamily: sans, fontSize: 30 * unit, color: colors.sand, letterSpacing: 3 * unit }}>Boutique à Madina, Conakry</span>
-        </div>
+        <MaskReveal delay={60} dur={14}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 * unit }}>
+            <MapPin size={30 * unit} color={colors.gold} />
+            <span style={{ fontFamily: sans, fontSize: 30 * unit, color: colors.sand, letterSpacing: 3 * unit }}>Boutique à Madina, Conakry</span>
+          </div>
+        </MaskReveal>
         <span style={{ opacity: ease(frame, 80, 95) * 0.55, fontFamily: sans, fontSize: 18 * unit, color: colors.sand }}>Visuels d’inspiration — ne représentent pas le stock réel.</span>
       </div>
       <Flash />
@@ -412,19 +585,19 @@ const VoiceOver = () => (
 
 // ---------------------------------------------------------------- Montage
 
-type Clip = { dur: number; el: React.ReactNode; whoosh?: boolean };
+type Clip = { dur: number; el: React.ReactNode; whoosh?: boolean; reveal?: RevealKind };
 
 const timeline: Clip[] = [
   { dur: 120, el: <ColdOpen /> },
-  { dur: 120, el: <Triptych /> },
-  { dur: 30, el: <Chapter n="01" title="Femme" />, whoosh: true },
-  { dur: 90, el: <Shot file="aod-femme.webp" from="zoom" zoom={[1.12, 1]} focus={[50, 30]} productId="robe-lumiere" /> },
-  { dur: 60, el: <Shot file="aod-conakry-hero.webp" from="right" zoom={[1.1, 1.1]} drift={[-3, 0]} productId="ensemble-libre" /> },
+  { dur: 120, el: <Triptych />, reveal: 'circle' },
+  { dur: 30, el: <Chapter n="01" title="Femme" />, whoosh: true, reveal: 'stripes' },
+  { dur: 90, el: <Shot file="aod-femme.webp" from="zoom" zoom={[1.12, 1.02]} focus={[50, 30]} orbit={3} productId="robe-lumiere" />, reveal: 'split' },
+  { dur: 60, el: <Shot file="aod-conakry-hero.webp" from="right" zoom={[1.1, 1.1]} drift={[-3, 0]} productId="ensemble-libre" />, reveal: 'wipe' },
   { dur: 30, el: <Shot file="aod-femme.webp" from="up" zoom={[1.22, 1.16]} focus={[50, 18]} caption="Élégance." /> },
-  { dur: 30, el: <Chapter n="02" title="Homme" />, whoosh: true },
-  { dur: 90, el: <Shot file="aod-homme.webp" from="zoom" zoom={[1.12, 1]} focus={[50, 30]} productId="chemise-essentielle" /> },
-  { dur: 60, el: <Shot file="aod-homme.webp" from="left" zoom={[1.22, 1.14]} focus={[50, 80]} drift={[0, -3]} caption="L’allure, à votre façon." /> },
-  { dur: 30, el: <Chapter n="03" title="Sacs & accessoires" />, whoosh: true },
+  { dur: 30, el: <Chapter n="02" title="Homme" />, whoosh: true, reveal: 'stripes' },
+  { dur: 90, el: <Shot file="aod-homme.webp" from="zoom" zoom={[1.12, 1.02]} focus={[50, 30]} orbit={-3} productId="chemise-essentielle" />, reveal: 'diagonal' },
+  { dur: 60, el: <Shot file="aod-homme.webp" from="left" zoom={[1.22, 1.14]} focus={[50, 80]} drift={[0, -3]} caption="L’allure, à votre façon." />, reveal: 'wipe' },
+  { dur: 30, el: <Chapter n="03" title="Sacs & accessoires" />, whoosh: true, reveal: 'stripes' },
   // Enchaînement rapide, une coupe par temps ou demi-mesure.
   { dur: 30, el: <><Shot file="aod-sacs.webp" from="right" zoom={[1.1, 1]} /><Tag productId="sac-atelier" /></> },
   { dur: 15, el: <Shot file="aod-sacs.webp" from="zoom" zoom={[1.22, 1.18]} focus={[45, 45]} /> },
@@ -432,13 +605,13 @@ const timeline: Clip[] = [
   { dur: 15, el: <Shot file="photo-1553062407-98eeb64c6a62.jpg" from="zoom" zoom={[1.3, 1.26]} focus={[50, 40]} /> },
   { dur: 30, el: <><Shot file="photo-1553062407-98eeb64c6a62.jpg" from="right" zoom={[1.08, 1]} /><Tag productId="sac-voyage" /></> },
   { dur: 15, el: <Shot file="aod-sacs.webp" from="zoom" zoom={[1.22, 1.18]} focus={[70, 70]} /> },
-  { dur: 45, el: <Shot file="aod-sacs.webp" from="down" zoom={[1.22, 1]} caption="Le détail qui change tout." /> },
-  { dur: 30, el: <Chapter n="04" title="Chaussures" />, whoosh: true },
+  { dur: 45, el: <Shot file="aod-sacs.webp" from="down" zoom={[1.22, 1]} caption="Le détail qui change tout." />, reveal: 'diagonal' },
+  { dur: 30, el: <Chapter n="04" title="Chaussures" />, whoosh: true, reveal: 'stripes' },
   { dur: 150, el: <SplitShoes /> },
-  { dur: 180, el: <Mosaic />, whoosh: true },
-  ...steps.map((s) => ({ dur: 90, el: <Step {...s} />, whoosh: true })),
-  { dur: 90, el: <HeroQuote /> },
-  { dur: 300, el: <Finale /> },
+  { dur: 180, el: <Mosaic />, whoosh: true, reveal: 'circle' },
+  ...steps.map((s, i) => ({ dur: 90, el: <Step {...s} index={i} />, whoosh: true, reveal: (['wipe', 'diagonal', 'split'] as RevealKind[])[i] })),
+  { dur: 90, el: <HeroQuote />, reveal: 'circle' },
+  { dur: 300, el: <Finale />, reveal: 'split' },
 ];
 
 const starts = timeline.reduce<number[]>((acc, c, i) => [...acc, i ? acc[i - 1] + timeline[i - 1].dur : 0], []);
@@ -469,8 +642,12 @@ const Sound = () => {
 export const AodMontage = () => (
   <AbsoluteFill style={{ background: colors.navyDeep }}>
     {timeline.map((c, i) => (
-      <Sequence key={i} from={starts[i]} durationInFrames={c.dur}>{c.el}</Sequence>
+      // Chaque plan déborde de OVERLAP images sous le suivant, qui se révèle par-dessus.
+      <Sequence key={i} from={starts[i]} durationInFrames={c.dur + (i < timeline.length - 1 ? OVERLAP : 0)}>
+        <Reveal kind={c.reveal ?? 'cut'}>{c.el}</Reveal>
+      </Sequence>
     ))}
+    {[120, DROP, FINALE].map((t) => <Sequence key={`leak${t}`} from={t - 4} durationInFrames={40}><LightLeak /></Sequence>)}
     <Sequence from={120} durationInFrames={FINALE - 120}><LogoBug /></Sequence>
     <Vignette />
     <Grain />
